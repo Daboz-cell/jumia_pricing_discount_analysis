@@ -1,6 +1,6 @@
 # Jumia Home & Kitchen Category — Pricing, Discount & Rating Analysis
 
-An end-to-end Excel data analytics project that cleans a raw Jumia (Home & Kitchen category) product export, engineers pricing/rating features, builds KPI pivot tables, and packages the results into an interactive dashboard — aimed at answering one core business question for Jumia and its sellers:
+An end-to-end data analytics project — built in **Excel**, then rebuilt in **Power BI** — that cleans a raw Jumia (Home & Kitchen category) product export, engineers pricing/rating features, builds KPI tables, and packages the results into an interactive dashboard — aimed at answering one core business question for Jumia and its sellers:
 
 > **Does discounting actually drive engagement, and how should sellers price and manage their catalog as a result?**
 
@@ -10,7 +10,9 @@ An end-to-end Excel data analytics project that cleans a raw Jumia (Home & Kitch
 
 | File | Description |
 |---|---|
-| `jumia_clean_dataset.xlsx` | The full workbook — raw data, cleaned data, feature-engineered columns, KPI summary pivot tables, and the interactive Dashboard sheet |
+| `Excel_jumia_dataset.csv` | The original raw, unprocessed export — messy prices, negative review counts, text-based ratings, and all |
+| `jumia_clean_dataset.xlsx` | The Excel build — raw data, cleaned data, feature-engineered columns, KPI summary pivot tables, and the interactive Dashboard sheet |
+| `jumia_dashboard.pbix` | The Power BI build — Power Query cleaning, DAX calculated columns & measures, and an interactive slicer-driven report |
 | `README.md` | This file — process, findings, and recommendations |
 
 ---
@@ -76,7 +78,7 @@ Raw data (115 rows) was copied into a `Cleaned Data` sheet, leaving the original
 | Category | Products | Reviews | Avg. Price |
 |---|---|---|---|
 | Budget (≤KSh 500) | 29 | 232 | KSh 292.14 |
-| Mid-Range (KSh 501–1,500) | 46 | 209 | KSh 980.57 |
+| Mid-Range (KSh 501−1,500) | 46 | 209 | KSh 980.57 |
 | Premium (>KSh 1,500) | 37 | 282 | KSh 2,144.70 |
 
 Mid-Range dominates inventory count, but Budget and Premium items pull in more reviews per listing — engagement is strongest at the price extremes, not the middle.
@@ -140,7 +142,80 @@ Essentially neither — price and rating show almost no relationship (correlatio
 ## 9. Tools Used
 
 - Microsoft Excel (formulas, Conditional Formatting, Remove Duplicates, Go To Special, Pivot Tables, Pivot Charts, Slicers, Report Connections)
-- No external libraries — entirely native Excel workflow, chosen to match the brief's requirement for a reproducible, formula-driven analysis
+- Power BI Desktop (Power Query, Data Modeling, DAX)
+- No external libraries — entirely native tooling, chosen to match a reproducible, formula/measure-driven workflow
 
 ---
 
+## 10. Power BI Version
+
+The same project, rebuilt in **Power BI** (`jumia_dashboard.pbix`) — same dataset, same business questions, a different toolset.
+
+**Data cleaning (Power Query)**
+
+| Excel step | Power BI equivalent |
+|---|---|
+| Find & Replace to strip "KSh " and "," | `Replace Values` on Current Price / Old Price, then Change Type → Decimal Number |
+| Manual midpoint for the one price-range row | Custom Column in M, splitting on `-` and averaging both halves |
+| Paste Special → Divide by 100 for Discount | `Replace Values` ("%") → Decimal → `Transform → Standard → Divide` by 100 |
+| `=ABS()` for negative review counts | `Transform → Standard → Absolute Value` |
+| Go To Special → Blanks → fill with 0 / "Not Rated" | `Replace Values`: null → 0 for Review; Rating left as **blank**, not text — `ISBLANK()` is handled in the DAX category measure instead, keeping the column numeric |
+
+**Feature engineering (DAX calculated columns)**
+
+```dax
+Discount Amount = 'Cleaned Data'[Old Price] - 'Cleaned Data'[Current Price]
+
+Price Category =
+SWITCH(
+    TRUE(),
+    'Cleaned Data'[Current Price] <= 500, "Budget",
+    'Cleaned Data'[Current Price] <= 1500, "Mid-Range",
+    "Premium"
+)
+
+Discount Category =
+SWITCH(
+    TRUE(),
+    'Cleaned Data'[Discount] < 0.2, "Low (<20%)",
+    'Cleaned Data'[Discount] <= 0.4, "Medium (20%-40%)",
+    "High (>40%)"
+)
+
+Rating Category =
+SWITCH(
+    TRUE(),
+    ISBLANK('Cleaned Data'[Rating]), "Not Rated",
+    'Cleaned Data'[Rating] < 3, "Poor",
+    'Cleaned Data'[Rating] <= 4, "Average",
+    'Cleaned Data'[Rating] <= 4.5, "Good",
+    "Excellent"
+)
+```
+
+**Baseline KPIs (DAX measures)**
+
+```dax
+Total Products          = COUNTROWS('Cleaned Data')
+Total Reviews           = SUM('Cleaned Data'[Review])
+Average Current Price   = AVERAGE('Cleaned Data'[Current Price])
+Average Old Price       = AVERAGE('Cleaned Data'[Old Price])
+Average Discount        = AVERAGE('Cleaned Data'[Discount])
+Average Rating          = AVERAGE('Cleaned Data'[Rating])   -- blanks auto-excluded
+```
+
+Same baseline results as the Excel version: 112 products, 723 reviews, KSh 1,186.89 average current price, KSh 1,811.11 average old price, 36.78% average discount, 3.89/5.0 average rating.
+
+**The report**
+
+4 card visuals (Total Products, Average Current Price, Average Discount, Total Reviews) bound directly to the measures above, 3 clustered column charts (Price Category, Discount Category, Rating Category) sharing the same two underlying measures across different axes, and slicers for Price Category and Discount Category that cross-filter every visual on the page automatically — no manual "connect" step the way Excel's Report Connections requires.
+
+The visual design (Jumia orange `#F68B1E` / navy `#1A1A2E` palette, rounded KPI cards, consistent chart colors, off-white canvas) was applied manually, visual by visual.
+
+**Why rebuild it in Power BI**
+
+- Power Query's `Remove Duplicates` needed no helper column, unlike the Excel `COUNTIF` approach.
+- DAX measures are written once and reused across every card, chart, and slicer — refreshing the data recalculates all of them together.
+- Slicers cross-filter the whole page by default through the data model's relationships, removing Excel's manual Report Connections step.
+
+---
